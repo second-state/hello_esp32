@@ -1,12 +1,23 @@
-use esp_idf_svc::hal::i2s::{config, I2sDriver};
+use esp_idf_svc::{
+    hal::{
+        gpio::AnyIOPin,
+        i2s::{config, I2sDriver, I2S0, I2S1},
+    },
+    io::Read,
+};
 
 const SAMPLE_RATE: u32 = 16000;
 
 static WAV_DATA: &[u8] = include_bytes!("../assets/hello.wav");
 
-fn player_wav() {
-    let peripherals = esp_idf_svc::hal::prelude::Peripherals::take().unwrap();
-
+fn player_wav(
+    i2s1: I2S1,
+    bclk: AnyIOPin,
+    dout: AnyIOPin,
+    lrclk: AnyIOPin,
+    mclk: Option<AnyIOPin>,
+    data: Option<&[u8]>,
+) {
     let i2s_config = config::StdConfig::new(
         config::Config::default().auto_clear(true),
         config::StdClkConfig::from_sample_rate_hz(SAMPLE_RATE),
@@ -17,17 +28,40 @@ fn player_wav() {
         config::StdGpioConfig::default(),
     );
 
-    let bclk = peripherals.pins.gpio15;
-    let dout = peripherals.pins.gpio7;
-    let lrclk = peripherals.pins.gpio16;
-    let mclk: Option<esp_idf_svc::hal::gpio::AnyIOPin> = None;
-
-    let mut tx_driver =
-        I2sDriver::new_std_tx(peripherals.i2s1, &i2s_config, bclk, dout, mclk, lrclk).unwrap();
+    let mut tx_driver = I2sDriver::new_std_tx(i2s1, &i2s_config, bclk, dout, mclk, lrclk).unwrap();
 
     tx_driver.tx_enable().unwrap();
 
-    tx_driver.write_all(WAV_DATA, 1000).unwrap();
+    if let Some(data) = data {
+        tx_driver.write_all(data, 1000).unwrap();
+    } else {
+        tx_driver.write_all(WAV_DATA, 1000).unwrap();
+    }
+}
+
+fn record(
+    i2s: I2S0,
+    ws: AnyIOPin,
+    sck: AnyIOPin,
+    din: AnyIOPin,
+    mclk: Option<AnyIOPin>,
+) -> Vec<u8> {
+    let i2s_config = config::StdConfig::new(
+        config::Config::default().auto_clear(true),
+        config::StdClkConfig::from_sample_rate_hz(SAMPLE_RATE),
+        config::StdSlotConfig::philips_slot_default(
+            config::DataBitWidth::Bits16,
+            config::SlotMode::Mono,
+        ),
+        config::StdGpioConfig::default(),
+    );
+
+    let mut rx_driver = I2sDriver::new_std_rx(i2s, &i2s_config, sck, din, mclk, ws).unwrap();
+    rx_driver.rx_enable().unwrap();
+
+    let mut buffer = vec![0u8; 5 * SAMPLE_RATE as usize * 2]; // 5 seconds of audio at 16kHz, 16-bit mono
+    rx_driver.read_exact(&mut buffer).unwrap();
+    buffer
 }
 
 fn main() {
@@ -38,6 +72,37 @@ fn main() {
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
 
+    let peripherals = esp_idf_svc::hal::prelude::Peripherals::take().unwrap();
+
     log::info!("Hello, world!");
-    player_wav();
+
+    let sck = peripherals.pins.gpio5;
+    let din = peripherals.pins.gpio6;
+    let ws = peripherals.pins.gpio4;
+
+    let dout = peripherals.pins.gpio7;
+    let bclk = peripherals.pins.gpio15;
+    let lrclk = peripherals.pins.gpio16;
+
+    let mut button = esp_idf_svc::hal::gpio::PinDriver::input(peripherals.pins.gpio0).unwrap();
+    button.set_pull(esp_idf_svc::hal::gpio::Pull::Up).unwrap();
+    button
+        .set_interrupt_type(esp_idf_svc::hal::gpio::InterruptType::PosEdge)
+        .unwrap();
+
+    log::info!("Waiting for button press...");
+    esp_idf_svc::hal::task::block_on(button.wait_for_rising_edge()).unwrap();
+    log::info!("Button pressed, starting recording...");
+
+    let samples = record(peripherals.i2s0, ws.into(), sck.into(), din.into(), None);
+    log::info!("Recording complete, length: {} bytes", samples.len());
+
+    player_wav(
+        peripherals.i2s1,
+        bclk.into(),
+        dout.into(),
+        lrclk.into(),
+        None,
+        Some(&samples),
+    );
 }
