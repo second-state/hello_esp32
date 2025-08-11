@@ -103,6 +103,14 @@ fn main() {
         .set_interrupt_type(esp_idf_svc::hal::gpio::InterruptType::PosEdge)
         .unwrap();
 
+    log::info!("capacity of SPIRAM: {} KB", get_cap_spiram() / 1024); // it will show 8M if open CONFIG_SPIRAM in sdkconfig.default, else 0
+    log::info!("capacity of internal RAM: {} KB", get_cap_internal() / 1024); // 363KB
+    log::info!("stack high: {}", get_stack_high());
+
+    // try malloc a large buffer to test memory
+    // if not open CONFIG_SPIRAM, it will panic and restart
+    let _large_buffer = Vec::<u8>::with_capacity(1024 * 1024); // 1MB
+
     log::info!("Waiting for button press...");
     esp_idf_svc::hal::task::block_on(button.wait_for_rising_edge()).unwrap();
     log::info!("Button pressed, starting recording...");
@@ -120,4 +128,24 @@ fn main() {
     );
 
     unsafe { esp_idf_svc::sys::esp_restart() }
+}
+
+pub fn get_stack_high() -> u32 {
+    let stack_high =
+        unsafe { esp_idf_svc::sys::uxTaskGetStackHighWaterMark2(std::ptr::null_mut()) };
+    stack_high
+}
+
+pub fn get_cap_spiram() -> usize {
+    unsafe {
+        use esp_idf_svc::sys::{heap_caps_get_free_size, MALLOC_CAP_SPIRAM};
+        heap_caps_get_free_size(MALLOC_CAP_SPIRAM)
+    }
+}
+
+pub fn get_cap_internal() -> usize {
+    unsafe {
+        use esp_idf_svc::sys::{heap_caps_get_free_size, MALLOC_CAP_INTERNAL};
+        heap_caps_get_free_size(MALLOC_CAP_INTERNAL)
+    }
 }
