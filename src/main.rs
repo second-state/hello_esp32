@@ -6,6 +6,8 @@ use esp_idf_svc::{
     io::Read,
 };
 
+mod ui;
+
 const SAMPLE_RATE: u32 = 16000;
 
 static WAV_DATA: &[u8] = include_bytes!("../assets/hello.wav");
@@ -75,6 +77,10 @@ fn main() {
     let peripherals = esp_idf_svc::hal::prelude::Peripherals::take().unwrap();
 
     log::info!("Hello, world!");
+
+    ui::init_ui().unwrap();
+    log::info!("UI initialized");
+    ui::hello_lcd().unwrap();
 
     let sck = peripherals.pins.gpio5;
     let din = peripherals.pins.gpio6;
