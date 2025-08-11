@@ -6,6 +6,7 @@ use esp_idf_svc::{
     io::Read,
 };
 
+mod network;
 mod ui;
 
 const SAMPLE_RATE: u32 = 16000;
@@ -75,6 +76,9 @@ fn main() {
     esp_idf_svc::log::EspLogger::initialize_default();
 
     let peripherals = esp_idf_svc::hal::prelude::Peripherals::take().unwrap();
+    let sysloop = esp_idf_svc::eventloop::EspSystemEventLoop::take().unwrap();
+    let _fs = esp_idf_svc::io::vfs::MountedEventfs::mount(20).unwrap();
+    let partition = esp_idf_svc::nvs::EspDefaultNvsPartition::take().unwrap();
 
     log::info!("Hello, world!");
 
@@ -112,8 +116,45 @@ fn main() {
     let _large_buffer = Vec::<u8>::with_capacity(1024 * 1024); // 1MB
 
     log::info!("Waiting for button press...");
+    // load SSID and password from environment variables on build time
+    const SSID: Option<&str> = option_env!("SSID");
+    const PASSWORD: Option<&str> = option_env!("PASSWORD");
+    const SERVER_URL: Option<&str> = option_env!("SERVER_URL");
+
+    let _wifi = network::wifi(
+        SSID.unwrap(),
+        PASSWORD.unwrap_or_default(),
+        peripherals.modem,
+        sysloop,
+    )
+    .unwrap();
+
     esp_idf_svc::hal::task::block_on(button.wait_for_rising_edge()).unwrap();
     log::info!("Button pressed, starting recording...");
+    let tokio_rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    tokio_rt.block_on(async {
+        log::info!("Starting HTTP GET request...");
+        match network::http_get("http://httpbin.org/get").await {
+            Ok(response) => log::info!("HTTP GET response: {}", response),
+            Err(e) => log::error!("HTTP GET error: {}", e),
+        }
+    });
+
+    if let Some(server_url) = SERVER_URL {
+        tokio_rt.block_on(async {
+            log::info!("Starting WebSocket task...");
+            match network::ws_task(server_url).await {
+                Ok(_) => log::info!("WebSocket task completed successfully"),
+                Err(e) => log::error!("WebSocket task error: {}", e),
+            }
+        });
+    } else {
+        log::warn!("No SERVER_URL provided, skipping WebSocket connection");
+    }
 
     let samples = record(peripherals.i2s0, ws.into(), sck.into(), din.into(), None);
     log::info!("Recording complete, length: {} bytes", samples.len());
