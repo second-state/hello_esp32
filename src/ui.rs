@@ -8,6 +8,7 @@ use embedded_graphics::{
     Drawable,
 };
 use embedded_text::TextBox;
+use esp_idf_svc::hal::gpio::AnyIOPin;
 use esp_idf_svc::sys::EspError;
 use u8g2_fonts::U8g2TextStyle;
 
@@ -16,6 +17,20 @@ const DISPLAY_HEIGHT: usize = 240;
 pub type ColorFormat = Rgb565;
 
 static mut ESP_LCD_PANEL_HANDLE: esp_idf_svc::sys::esp_lcd_panel_handle_t = std::ptr::null_mut();
+
+fn init_spi_rs(
+    spi: esp_idf_svc::hal::spi::SPI3,
+    sclk: AnyIOPin,
+    sdo: AnyIOPin,
+    sdi: Option<AnyIOPin>,
+) -> esp_idf_svc::hal::spi::SpiDriver<'static> {
+    let config = esp_idf_svc::hal::spi::SpiDriverConfig::new().dma(
+        esp_idf_svc::hal::spi::Dma::Auto(DISPLAY_WIDTH * DISPLAY_HEIGHT),
+    );
+
+    let driver = esp_idf_svc::hal::spi::SpiDriver::new(spi, sclk, sdo, sdi, &config).unwrap();
+    driver
+}
 
 fn init_spi() -> Result<(), EspError> {
     use esp_idf_svc::sys::*;
@@ -117,6 +132,17 @@ pub fn init_ui() -> Result<(), EspError> {
     init_spi()?;
     init_lcd()?;
     Ok(())
+}
+
+pub fn init_ui_rs(
+    spi: esp_idf_svc::hal::spi::SPI3,
+    sclk: AnyIOPin,
+    sdo: AnyIOPin,
+    sdi: Option<AnyIOPin>,
+) -> Result<esp_idf_svc::hal::spi::SpiDriver<'static>, EspError> {
+    let driver = init_spi_rs(spi, sclk, sdo, sdi);
+    init_lcd()?;
+    Ok(driver)
 }
 
 pub fn hello_lcd() -> Result<(), EspError> {

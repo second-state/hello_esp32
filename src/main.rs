@@ -78,7 +78,14 @@ fn main() {
 
     log::info!("Hello, world!");
 
-    ui::init_ui().unwrap();
+    // ui::init_ui().unwrap();
+    let _spi_driver = ui::init_ui_rs(
+        peripherals.spi3,
+        peripherals.pins.gpio21.into(),
+        peripherals.pins.gpio47.into(),
+        None,
+    )
+    .unwrap();
     log::info!("UI initialized");
     ui::hello_lcd().unwrap();
 
@@ -111,4 +118,6 @@ fn main() {
         None,
         Some(&samples),
     );
+
+    unsafe { esp_idf_svc::sys::esp_restart() }
 }
