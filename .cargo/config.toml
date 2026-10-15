@@ -3,7 +3,8 @@ target = "xtensa-esp32s3-espidf"
 
 [target.xtensa-esp32s3-espidf]
 linker = "ldproxy"
-runner = "espflash flash --monitor"
+# OTA 分区表,app 烧进 ota_0(首启槽;OTA 更新写 ota_1,见 partitions.csv / build.sh)
+runner = "espflash flash --monitor --flash-size 16mb --partition-table partitions.csv --target-app-partition ota_0"
 rustflags = [ "--cfg",  "espidf_time64"]
 
 [unstable]

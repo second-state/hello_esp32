@@ -14,6 +14,10 @@ CONFIG_MBEDTLS_TLS_VERSION_1_3=y
 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 
+# OTA: partitions.csv(otadata + ota_0/ota_1)不在 sdkconfig 里启用 custom 分区表
+# (embuild 的 project dir 是 out/,它找不到 csv 会构建失败),而是在烧录时用
+# espflash --partition-table partitions.csv 指定,app 烧进 ota_0,见 espflash.toml
+
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_USE=y
 CONFIG_SPIRAM_USE_MALLOC=y

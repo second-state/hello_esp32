@@ -2,6 +2,7 @@ use esp_idf_svc::http::client::EspHttpConnection;
 
 mod mqtt;
 mod network;
+mod ota;
 
 const URL: &str = "https://httpbin.org/get";
 
@@ -30,7 +31,9 @@ fn main() {
 
     https_get(URL).unwrap();
 
-    mqtt::run().unwrap();
+    // mqtt::run().unwrap();
+
+    ota::run().unwrap();
 }
 
 /// HTTPS GET,证书校验走 ESP x509 certificate bundle(参考 vibekeys_firmware 的做法)
